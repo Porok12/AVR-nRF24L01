@@ -7,18 +7,21 @@
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
+#include "nRF24L01.h"
+
 /* ATtiny25 */
 #define SCK PB2
 #define MISO PB1
 #define MOSI PB0
 #define SS PB3
+#define CSN SS
 
 int init_spi() {
 	/* Define directions for port pins */
-	DDRB |= _BV(MOSI) | _BV(SCK) | _BV(SS);
-	DDRB &= ~_BV(MISO);
+	DDRB |= _BV(MISO) | _BV(SCK) | _BV(SS);
+	DDRB &= ~_BV(MOSI);
 	_NOP();
-	PORTB = _BV(MISO);
+	PORTB = _BV(MOSI);
 
 	// USICR – USI Control Register
 	// USISIE – Start Condition Interrupt Enable
@@ -42,6 +45,10 @@ int init_spi() {
 
 	// USIDR – USI Data Register
 
+	_NOP();
+	PORTB |= _BV(CSN);
+//	PORTB |= _BV(CE);
+
 //	// Enable 'Clear Timer on Compare match' and init prescaler.
 //	TCCR0A = (1<<WGM01) | TC0_PS_SETTING;
 //	// Init Output Compare Register.
@@ -61,6 +68,30 @@ uint8_t spi_send(uint8_t byte) {
 	return USIDR;
 }
 
+uint8_t get_reg(uint8_t reg) {
+	_delay_us(10);
+	PORTB &= ~_BV(CSN);
+	_delay_us(10);
+	spi_send(R_REGISTER + reg);
+	_delay_us(10);
+	reg = spi_send(NOP);
+	_delay_us(10);
+	PORTB |= _BV(CSN);
+	return reg;
+}
+
+void set_reg(uint8_t reg, uint8_t package) {
+	_delay_us(10);
+	PORTB &= ~_BV(CSN);
+	_delay_us(10);
+	spi_send(W_REGISTER + reg);
+	_delay_us(10);
+	spi_send(package);
+	_delay_us(10);
+	PORTB |= _BV(CSN);
+}
+
+
 int main(void) {
 	init_spi();
 
@@ -68,13 +99,12 @@ int main(void) {
 	_NOP();
 
 	while(1) {
-		if (PORTB & _BV(PB4)) {
+		if (get_reg(STATUS) == 0x0E) {
 			PORTB &= ~_BV(PB4);
 		} else {
 			PORTB |= _BV(PB4);
 		}
 
-		spi_send(0xAA);
 		_delay_ms(500);
 	}
 
